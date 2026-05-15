@@ -1,11 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import {
-  BookProgress,
-  getAllProgress,
-  getRecentProgress,
-} from '@/lib/mock-store';
+import { BookProgress, getAllProgress } from '@/lib/mock-store';
 
 export function useProgressList() {
   const [progress, setProgress] = useState<BookProgress[]>([]);
@@ -36,7 +32,7 @@ export function useProgressList() {
   return {
     ready,
     progress,
-    recentProgress: getRecentProgress(),
+    recentProgress: progress[0] ?? null,
     refresh,
   };
 }

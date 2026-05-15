@@ -4,8 +4,8 @@ import { ChevronRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Book } from '@/lib/mock-data';
-import { BookProgress } from '@/lib/mock-store';
+import type { BookProgress } from '@/lib/data/progress';
+import type { Book } from '@/lib/mock-data';
 
 export function BookCard({
   book,

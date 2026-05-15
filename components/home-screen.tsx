@@ -4,37 +4,35 @@ import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
 import { BookCard } from '@/components/book-card';
 import { RecentStudyCard } from '@/components/recent-study-card';
-import { useMockAuth } from '@/hooks/use-mock-auth';
-import { useProgressList } from '@/hooks/use-progress';
-import { Book, getBook, toStudyWordView } from '@/lib/mock-data';
-import {
-  ensureBookProgress,
-  getBookProgress,
-  getNextWord,
-} from '@/lib/mock-store';
+import type { AuthUser, BookProgress } from '@/lib/data/progress';
+import type { Book, StudyWordView } from '@/lib/mock-data';
 
-export function HomeScreen({ books }: { books: Book[] }) {
+export function HomeScreen({
+  books,
+  progress,
+  recentProgress,
+  nextRecentWord,
+  user,
+}: {
+  books: Book[];
+  progress: BookProgress[];
+  recentProgress: BookProgress | null;
+  nextRecentWord: StudyWordView | null;
+  user: AuthUser | null;
+}) {
   const router = useRouter();
-  const auth = useMockAuth();
-  const { progress, recentProgress } = useProgressList();
   const recentBook = recentProgress
-    ? books.find((book) => book.bookId === recentProgress.bookId) ??
-      getBook(recentProgress.bookId)
+    ? books.find((book) => book.bookId === recentProgress.bookId) ?? null
     : null;
-  const nextRecentWord =
-    recentProgress && recentBook
-      ? getNextWord(recentProgress.bookId, recentProgress.currentWordRank)
-      : null;
 
   function openBook(book: Book) {
     if ((book.availableWordCount ?? book.wordCount) === 0) return;
 
-    if (!auth.isLoggedIn) {
+    if (!user) {
       router.push(`/mine?auth=login&redirect=/study/${book.bookId}`);
       return;
     }
 
-    ensureBookProgress(book.bookId, book);
     router.push(`/study/${book.bookId}`);
   }
 
@@ -43,18 +41,18 @@ export function HomeScreen({ books }: { books: Book[] }) {
       <div className="space-y-7 px-4 py-6">
         <header>
           <p className="text-sm font-medium text-stone-500">
-            {auth.isLoggedIn ? '继续保持一点点学习节奏' : '选择一本单词书开始学习'}
+            {user ? '继续保持一点点学习节奏' : '选择一本单词书开始学习'}
           </p>
           <h1 className="mt-2 text-3xl font-semibold tracking-normal text-stone-950">
             首页
           </h1>
         </header>
 
-        {auth.isLoggedIn && recentProgress && recentBook ? (
+        {user && recentProgress && recentBook ? (
           <section className="space-y-3">
             <RecentStudyCard
               book={recentBook}
-              nextWord={nextRecentWord ? toStudyWordView(nextRecentWord) : null}
+              nextWord={nextRecentWord}
               onClick={() => openBook(recentBook)}
               progress={recentProgress}
             />
@@ -81,9 +79,9 @@ export function HomeScreen({ books }: { books: Book[] }) {
                   book={book}
                   onClick={() => openBook(book)}
                   progress={
-                    auth.isLoggedIn
+                    user
                       ? progress.find((item) => item.bookId === book.bookId) ??
-                        getBookProgress(book.bookId)
+                        null
                       : null
                   }
                 />

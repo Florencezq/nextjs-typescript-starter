@@ -4,8 +4,8 @@ import { ArrowRight, Clock3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Book, StudyWordView } from '@/lib/mock-data';
-import { BookProgress } from '@/lib/mock-store';
+import type { BookProgress } from '@/lib/data/progress';
+import type { Book, StudyWordView } from '@/lib/mock-data';
 
 export function RecentStudyCard({
   book,

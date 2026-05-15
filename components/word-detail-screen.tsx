@@ -4,6 +4,7 @@ import Link from 'next/link';
 import type React from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
+import { PronunciationButton } from '@/components/pronunciation-button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Book, toWordDetailView, Word } from '@/lib/mock-data';
@@ -56,8 +57,18 @@ export function WordDetailScreen({
                 {word.wordId ? <Badge>{word.wordId}</Badge> : null}
               </div>
               <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-sm text-stone-500">
-                {word.ukphone ? <span>UK {word.ukphone}</span> : null}
-                {word.usphone ? <span>US {word.usphone}</span> : null}
+                {word.ukphone ? (
+                  <span className="inline-flex items-center gap-1">
+                    UK {word.ukphone}
+                    <PronunciationButton type={1} word={word.headWord} />
+                  </span>
+                ) : null}
+                {word.usphone ? (
+                  <span className="inline-flex items-center gap-1">
+                    US {word.usphone}
+                    <PronunciationButton type={2} word={word.headWord} />
+                  </span>
+                ) : null}
                 {word.phone ? <span>{word.phone}</span> : null}
               </div>
             </section>

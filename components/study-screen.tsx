@@ -4,51 +4,117 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, CheckCircle2, LogIn } from 'lucide-react';
+import { syncStudiedWordsAction } from '@/app/actions/study-actions';
 import { AppShell } from '@/components/app-shell';
+import { PronunciationButton } from '@/components/pronunciation-button';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { useMockAuth } from '@/hooks/use-mock-auth';
-import {
-  Book,
-  StudyWordView,
-  Word,
-  toStudyWordView,
-} from '@/lib/mock-data';
-import {
-  BookProgress,
-  completeWord,
-  ensureBookProgress,
-  getNextWord,
-} from '@/lib/mock-store';
+import type { BookProgress } from '@/lib/data/progress';
+import type { Book, StudyWordView } from '@/lib/mock-data';
 
 export function StudyScreen({
   book,
-  words,
+  completed: initialCompleted,
+  loginRequired = false,
+  progress: initialProgress,
+  words: initialWords,
 }: {
   book: Book | null;
-  words: Word[];
+  completed: boolean;
+  loginRequired?: boolean;
+  progress: BookProgress | null;
+  words: StudyWordView[];
 }) {
   const router = useRouter();
-  const auth = useMockAuth();
-  const [progress, setProgress] = React.useState<BookProgress | null>(null);
-  const [word, setWord] = React.useState<StudyWordView | null>(null);
-  const [completed, setCompleted] = React.useState(false);
-  const [saving, setSaving] = React.useState(false);
+  const [progress, setProgress] =
+    React.useState<BookProgress | null>(initialProgress);
+  const [words, setWords] = React.useState<StudyWordView[]>(initialWords);
+  const [currentIndex, setCurrentIndex] = React.useState(0);
+  const [completed, setCompleted] = React.useState(initialCompleted);
+  const [error, setError] = React.useState('');
+  const [syncing, setSyncing] = React.useState(false);
+  const [waitingForMore, setWaitingForMore] = React.useState(false);
+  const pendingWordIdsRef = React.useRef<number[]>([]);
+  const syncTimerRef = React.useRef<number | null>(null);
+  const wordsRef = React.useRef(initialWords);
+  const currentIndexRef = React.useRef(0);
   const bookId = book?.bookId ?? '';
+  const word = words[currentIndex] ?? null;
 
   React.useEffect(() => {
-    if (!auth.ready || !auth.isLoggedIn || !book) return;
+    setProgress(initialProgress);
+    setWords(initialWords);
+    setCurrentIndex(0);
+    setCompleted(initialCompleted);
+    setError('');
+    setWaitingForMore(false);
+    pendingWordIdsRef.current = [];
+  }, [initialCompleted, initialProgress, initialWords]);
 
-    const nextProgress = ensureBookProgress(book.bookId, book, words);
-    const nextWord = nextProgress
-      ? getNextWord(book.bookId, nextProgress.currentWordRank, words)
-      : null;
+  React.useEffect(() => {
+    wordsRef.current = words;
+  }, [words]);
 
-    setProgress(nextProgress);
-    setWord(nextWord ? toStudyWordView(nextWord) : null);
-    setCompleted(isCompleted(nextProgress, words, nextWord));
-  }, [auth.isLoggedIn, auth.ready, book, words]);
+  React.useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
+
+  const flushProgress = React.useCallback(async () => {
+    if (!bookId || pendingWordIdsRef.current.length === 0) return;
+
+    const wordIds = Array.from(new Set(pendingWordIdsRef.current));
+    pendingWordIdsRef.current = [];
+    setSyncing(true);
+
+    const tailRank = wordsRef.current.at(-1)?.wordRank ?? 0;
+    const result = await syncStudiedWordsAction(bookId, wordIds, tailRank);
+
+    setSyncing(false);
+
+    if (!result.ok) {
+      pendingWordIdsRef.current = [...wordIds, ...pendingWordIdsRef.current];
+      setError(result.message);
+      return;
+    }
+
+    setProgress(result.progress);
+    setWords((currentWords) => {
+      const existingIds = new Set(currentWords.map((item) => item.id));
+      const freshWords = result.words.filter((item) => !existingIds.has(item.id));
+      return freshWords.length > 0 ? [...currentWords, ...freshWords] : currentWords;
+    });
+
+    const noLocalNext =
+      currentIndexRef.current >= wordsRef.current.length &&
+      result.words.length === 0;
+    setWaitingForMore(false);
+    setCompleted(result.completed && noLocalNext);
+  }, [bookId]);
+
+  React.useEffect(() => {
+    return () => {
+      if (syncTimerRef.current) {
+        window.clearTimeout(syncTimerRef.current);
+      }
+
+      void flushProgress();
+    };
+  }, [flushProgress]);
+
+  function scheduleSync({ soon = false }: { soon?: boolean } = {}) {
+    if (syncTimerRef.current) {
+      window.clearTimeout(syncTimerRef.current);
+    }
+
+    syncTimerRef.current = window.setTimeout(
+      () => {
+        syncTimerRef.current = null;
+        void flushProgress();
+      },
+      soon ? 0 : 800,
+    );
+  }
 
   if (!book) {
     return (
@@ -68,11 +134,11 @@ export function StudyScreen({
     );
   }
 
-  if (auth.ready && !auth.isLoggedIn) {
+  if (loginRequired) {
     return (
       <AppShell showTabs={false}>
         <div className="flex min-h-dvh flex-col px-4 py-5">
-          <TopBar title={book.title} />
+          <TopBar title={book?.title ?? '开始学习'} />
           <Card className="mt-8 p-5">
             <h1 className="text-xl font-semibold">请先登录</h1>
             <p className="mt-2 text-sm leading-6 text-stone-600">
@@ -81,7 +147,7 @@ export function StudyScreen({
             <Button
               className="mt-5 w-full"
               onClick={() =>
-                router.push(`/mine?auth=login&redirect=/study/${book.bookId}`)
+                router.push(`/mine?auth=login&redirect=/study/${bookId}`)
               }
             >
               <LogIn className="h-4 w-4" />
@@ -101,19 +167,46 @@ export function StudyScreen({
   function handleNext() {
     if (!word || !book) return;
 
-    setSaving(true);
+    setError('');
+    pendingWordIdsRef.current = [...pendingWordIdsRef.current, word.id];
 
-    window.setTimeout(() => {
-      const nextProgress = completeWord(bookId, word.id, book, words);
-      const nextWord = nextProgress
-        ? getNextWord(bookId, nextProgress.currentWordRank, words)
-        : null;
+    const nextIndex = currentIndex + 1;
+    const hasNextWord = nextIndex < words.length;
+    currentIndexRef.current = nextIndex;
 
-      setProgress(nextProgress);
-      setWord(nextWord ? toStudyWordView(nextWord) : null);
-      setCompleted(isCompleted(nextProgress, words, nextWord));
-      setSaving(false);
-    }, 250);
+    setProgress((currentProgress) => {
+      if (!currentProgress) return currentProgress;
+
+      const nextLearnedCount = Math.min(
+        currentProgress.totalWords,
+        currentProgress.learnedCount + 1,
+      );
+
+      return {
+        ...currentProgress,
+        currentWordId: word.id,
+        currentWordRank: Math.max(currentProgress.currentWordRank, word.wordRank),
+        learnedCount: nextLearnedCount,
+        status:
+          !hasNextWord && nextLearnedCount >= currentProgress.totalWords
+            ? 'completed'
+            : 'learning',
+      };
+    });
+
+    if (hasNextWord) {
+      setCurrentIndex(nextIndex);
+      setWaitingForMore(false);
+    } else {
+      setCurrentIndex(nextIndex);
+      setWaitingForMore(true);
+      setCompleted(false);
+    }
+
+    const remainingWords = words.length - nextIndex - 1;
+    scheduleSync({
+      soon: pendingWordIdsRef.current.length >= 5 || remainingWords <= 10,
+    });
   }
 
   return (
@@ -142,26 +235,45 @@ export function StudyScreen({
           <div className="flex flex-1 flex-col justify-between py-6">
             <StudyWordCard bookId={bookId} word={word} />
 
+            {error ? (
+              <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
+                {error}
+              </p>
+            ) : null}
+
             <Button
               className="h-12 w-full"
-              disabled={saving}
               onClick={handleNext}
               type="button"
             >
-              {saving ? '保存中' : '下一个'}
+              下一个
               <ArrowRight className="h-4 w-4" />
             </Button>
+
+            <p className="mt-3 text-center text-xs text-stone-400">
+              {syncing ? '同步中' : '进度会自动同步'}
+            </p>
+          </div>
+        ) : waitingForMore ? (
+          <div className="flex flex-1 items-center justify-center">
+            <Card className="w-full p-5 text-center">
+              <p className="text-base font-semibold text-stone-950">
+                正在加载下一组
+              </p>
+              <p className="mt-2 text-sm leading-6 text-stone-500">
+                已学进度正在后台同步。
+              </p>
+            </Card>
           </div>
         ) : (
           <div className="flex flex-1 items-center justify-center">
             <Card className="w-full p-5 text-center">
               <p className="text-base font-semibold text-stone-950">
-                {words.length > 0 ? '正在准备单词' : '单词数据未导入'}
+                单词数据未导入
               </p>
               <p className="mt-2 text-sm leading-6 text-stone-500">
-                {words.length > 0
-                  ? '如果页面停留太久，请返回首页后重新进入。'
-                  : `这本书在 books 表中存在，但 words 表里还没有 book_id = ${book.bookId} 的单词。导入后会从第一个单词开始学习。`}
+                这本书在 books 表中存在，但 words 表里还没有 book_id ={' '}
+                {book.bookId} 的可学习单词。导入后会从第一个单词开始学习。
               </p>
               <Button className="mt-5 w-full" onClick={() => router.push('/')}>
                 返回首页
@@ -171,19 +283,6 @@ export function StudyScreen({
         )}
       </div>
     </AppShell>
-  );
-}
-
-function isCompleted(
-  progress: BookProgress | null,
-  words: Word[],
-  nextWord: Word | null,
-) {
-  return Boolean(
-    progress &&
-      words.length > 0 &&
-      !nextWord &&
-      progress.learnedCount >= words.length,
   );
 }
 
@@ -223,11 +322,21 @@ function StudyWordCard({
         <h1 className="break-words text-4xl font-semibold leading-tight text-stone-950">
           {word.headWord}
         </h1>
-        <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm text-stone-500">
-          {word.ukphone ? <span>UK {word.ukphone}</span> : null}
-          {word.usphone ? <span>US {word.usphone}</span> : null}
-        </div>
       </Link>
+      <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 text-sm text-stone-500">
+        {word.ukphone ? (
+          <span className="inline-flex items-center gap-1">
+            UK {word.ukphone}
+            <PronunciationButton type={1} word={word.headWord} />
+          </span>
+        ) : null}
+        {word.usphone ? (
+          <span className="inline-flex items-center gap-1">
+            US {word.usphone}
+            <PronunciationButton type={2} word={word.headWord} />
+          </span>
+        ) : null}
+      </div>
 
       <div className="mt-8 rounded-md bg-stone-50 p-4">
         <p className="text-base font-medium leading-7 text-stone-950">

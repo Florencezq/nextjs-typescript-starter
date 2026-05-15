@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { LogOut, UserRound } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
@@ -14,48 +15,42 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { useMockAuth } from '@/hooks/use-mock-auth';
-import { useProgressList } from '@/hooks/use-progress';
-import { Book, getBook } from '@/lib/mock-data';
-import { ensureBookProgress } from '@/lib/mock-store';
+import type { AuthUser, BookProgress } from '@/lib/data/progress';
+import type { Book } from '@/lib/mock-data';
 
 export function MineScreen({
   authMode,
   books,
+  progress,
   redirectTo,
+  user,
 }: {
   authMode?: 'login' | 'register';
   books: Book[];
+  progress: BookProgress[];
   redirectTo?: string;
+  user: AuthUser | null;
 }) {
   const router = useRouter();
-  const auth = useMockAuth();
-  const { progress } = useProgressList();
   const [authOpen, setAuthOpen] = React.useState(false);
 
   React.useEffect(() => {
-    if (authMode && !auth.isLoggedIn) {
+    if (authMode && !user) {
       setAuthOpen(true);
     }
-  }, [auth.isLoggedIn, authMode]);
+  }, [authMode, user]);
 
   React.useEffect(() => {
-    if (auth.isLoggedIn && redirectTo?.startsWith('/') && !redirectTo.startsWith('//')) {
+    if (user && redirectTo?.startsWith('/') && !redirectTo.startsWith('//')) {
       router.push(redirectTo);
     }
-  }, [auth.isLoggedIn, redirectTo, router]);
+  }, [redirectTo, router, user]);
 
   function findBook(bookId: string) {
-    return books.find((book) => book.bookId === bookId) ?? getBook(bookId);
+    return books.find((book) => book.bookId === bookId) ?? null;
   }
 
   function continueBook(bookId: string) {
-    const book = findBook(bookId);
-
-    if (book) {
-      ensureBookProgress(bookId, book);
-    }
-
     router.push(`/study/${bookId}`);
   }
 
@@ -64,14 +59,14 @@ export function MineScreen({
       <div className="space-y-7 px-4 py-6">
         <header>
           <p className="text-sm font-medium text-stone-500">
-            {auth.isLoggedIn ? '查看你的学习状态' : '登录后保存学习进度'}
+            {user ? '查看你的学习状态' : '登录后保存学习进度'}
           </p>
           <h1 className="mt-2 text-3xl font-semibold tracking-normal text-stone-950">
             我的
           </h1>
         </header>
 
-        {auth.isLoggedIn && auth.user ? (
+        {user ? (
           <>
             <Card>
               <CardContent className="flex items-center justify-between gap-4 p-4">
@@ -81,7 +76,7 @@ export function MineScreen({
                   </div>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-stone-950">
-                      {auth.user.email}
+                      {user.email}
                     </p>
                     <p className="mt-1 text-xs text-stone-500">已登录</p>
                   </div>
@@ -89,8 +84,7 @@ export function MineScreen({
 
                 <Button
                   onClick={() => {
-                    auth.logout();
-                    router.push('/mine');
+                    signOut({ callbackUrl: '/mine' });
                   }}
                   size="sm"
                   type="button"

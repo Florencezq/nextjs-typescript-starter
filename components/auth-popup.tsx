@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import { LogIn, UserPlus } from 'lucide-react';
+import { loginAction, registerAction } from '@/app/actions/auth-actions';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -12,7 +13,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { useMockAuth } from '@/hooks/use-mock-auth';
 
 type AuthMode = 'login' | 'register';
 
@@ -28,12 +28,11 @@ export function AuthPopup({
   onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const auth = useMockAuth();
   const [currentMode, setCurrentMode] = React.useState<AuthMode>(mode);
   const [email, setEmail] = React.useState('demo@example.com');
   const [password, setPassword] = React.useState('password');
   const [error, setError] = React.useState('');
-  const [submitting, setSubmitting] = React.useState(false);
+  const [submitting, startTransition] = React.useTransition();
 
   React.useEffect(() => {
     if (open) {
@@ -54,21 +53,25 @@ export function AuthPopup({
     event.preventDefault();
     setError('');
 
-    if (!email.trim() || !password.trim()) {
+    const nextEmail = email.trim();
+    const nextPassword = password.trim();
+
+    if (!nextEmail || !nextPassword) {
       setError('请输入邮箱和密码');
       return;
     }
 
-    setSubmitting(true);
+    startTransition(async () => {
+      const result =
+        currentMode === 'login'
+          ? await loginAction(nextEmail, nextPassword)
+          : await registerAction(nextEmail, nextPassword);
 
-    window.setTimeout(() => {
-      if (currentMode === 'login') {
-        auth.login(email.trim());
-      } else {
-        auth.register(email.trim());
+      if (!result.ok) {
+        setError(result.message ?? '处理失败，请稍后重试。');
+        return;
       }
 
-      setSubmitting(false);
       onOpenChange(false);
 
       const target = safeRedirect(redirectTo);
@@ -77,7 +80,7 @@ export function AuthPopup({
       } else {
         router.refresh();
       }
-    }, 350);
+    });
   }
 
   const isLogin = currentMode === 'login';

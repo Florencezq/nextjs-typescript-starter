@@ -1,6 +1,6 @@
 import { StudyScreen } from '@/components/study-screen';
 import { getBookByBookId } from '@/lib/data/books';
-import { getWordsByBookId } from '@/lib/data/words';
+import { getCurrentUser, getNextWordForStudy } from '@/lib/data/progress';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,10 +9,30 @@ export default async function StudyPage({
 }: {
   params: { bookId: string };
 }) {
-  const [book, words] = await Promise.all([
-    getBookByBookId(params.bookId),
-    getWordsByBookId(params.bookId),
-  ]);
+  const user = await getCurrentUser();
 
-  return <StudyScreen book={book} words={words} />;
+  if (!user) {
+    const book = await getBookByBookId(params.bookId);
+
+    return (
+      <StudyScreen
+        book={book}
+        completed={false}
+        loginRequired
+        progress={null}
+        words={[]}
+      />
+    );
+  }
+
+  const data = await getNextWordForStudy(user.id, params.bookId);
+
+  return (
+    <StudyScreen
+      book={data.book}
+      completed={data.completed}
+      progress={data.progress}
+      words={data.words}
+    />
+  );
 }

@@ -147,12 +147,16 @@ export function getNextWord(
   currentWordRank: number,
   sourceWords?: Word[],
 ) {
-  return (
-    resolveWords(bookId, sourceWords).find(
-      (word) => word.wordRank > currentWordRank,
-    ) ??
-    null
-  );
+  let nextWord: Word | null = null;
+
+  for (const word of sourceWords ?? getWordsByBook(bookId)) {
+    if (word.bookId !== bookId || word.wordRank <= currentWordRank) continue;
+    if (!nextWord || word.wordRank < nextWord.wordRank) {
+      nextWord = word;
+    }
+  }
+
+  return nextWord;
 }
 
 export function completeWord(
