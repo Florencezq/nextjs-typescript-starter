@@ -11,13 +11,11 @@ export const authConfig = {
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
       let isLoggedIn = !!auth?.user;
-      let isOnDashboard = nextUrl.pathname.startsWith('/protected');
+      let isProtectedPath = nextUrl.pathname.startsWith('/protected');
 
-      if (isOnDashboard) {
+      if (isProtectedPath) {
         if (isLoggedIn) return true;
         return false; // Redirect unauthenticated users to login page
-      } else if (isLoggedIn) {
-        return Response.redirect(new URL('/protected', nextUrl));
       }
 
       return true;

@@ -1,3 +1,24 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    background: rgb(245 245 244);
+  }
+
+  body {
+    margin: 0;
+    background: rgb(245 245 244);
+    color: rgb(28 25 23);
+  }
+
+  button,
+  input {
+    font: inherit;
+  }
+}
