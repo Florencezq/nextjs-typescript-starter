@@ -1,36 +1,108 @@
-# Next.js + PostgreSQL Auth Starter
+# 英语单词学习 H5
 
-This is a [Next.js](https://nextjs.org/) starter kit that uses [NextAuth.js](https://next-auth.js.org/) for simple email + password login, [Drizzle](https://orm.drizzle.team) as the ORM, and a [Neon Postgres](https://vercel.com/postgres) database to persist the data.
+一个面向移动端的英语单词学习应用，基于 Next.js App Router、PostgreSQL、Drizzle ORM 和 NextAuth。应用支持邮箱密码登录、单词书列表、最近学习、单词学习、单词详情、发音播放和服务端学习进度同步。
 
-## Deploy Your Own
+## 功能
 
-You can clone & deploy it to Vercel with one click:
+- 首页展示全部单词书、可学习单词数量和学习进度。
+- 登录后展示最近学习入口，并支持从上次进度继续。
+- 学习页一次预取 50 个词，点击“下一个”会立即切换到本地队列里的下一个词。
+- 学习记录在后台批量同步到数据库，避免逐词等待网络和数据库写入。
+- 单词详情页展示释义、例句、短语、同近义词和同根词。
+- 支持英式/美式发音播放。
+- “我的”页展示当前账号和学习进度列表。
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?demo-title=Next.js%20Prisma%20PostgreSQL%20Auth%20Starter&demo-description=Simple%20Next.js%2013%20starter%20kit%20that%20uses%20Next-Auth%20for%20auth%20and%20Prisma%20PostgreSQL%20as%20a%20database.&demo-url=https%3A%2F%2Fnextjs-postgres-auth.vercel.app%2F&demo-image=%2F%2Fimages.ctfassets.net%2Fe5382hct74si%2F7rsVQ1ZBSiWe9JGO6FUeZZ%2F210cba91036ca912b2770e0bd5d6cc5d%2Fthumbnail.png&project-name=Next.js%%20Prisma%20PostgreSQL%20Auth%20Starter&repository-name=nextjs-postgres-auth-starter&repository-url=https%3A%2F%2Fgithub.com%2Fvercel%2Fnextjs-postgres-auth-starter&from=templates&skippable-integrations=1&env=AUTH_SECRET&envDescription=Generate%20a%20random%20secret%3A&envLink=https://generate-secret.vercel.app/&stores=%5B%7B"type"%3A"postgres"%7D%5D)
+## 技术栈
 
-## Developing Locally
+- Next.js 14 App Router
+- React 18
+- TypeScript
+- Tailwind CSS
+- NextAuth v5 beta
+- Drizzle ORM
+- PostgreSQL
 
-You can clone & create this repo with the following command
+## 本地开发
+
+安装依赖：
 
 ```bash
-npx create-next-app nextjs-typescript-starter --example "https://github.com/vercel/nextjs-postgres-auth-starter"
+npm install
 ```
 
-## Getting Started
-
-First, run the development server:
+创建 `.env` 文件：
 
 ```bash
-pnpm dev
+POSTGRES_URL="postgres://USER:PASSWORD@HOST:PORT/DATABASE"
+AUTH_SECRET="your-random-secret"
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+运行数据库迁移：
 
-## Learn More
+```bash
+npm run db:migrate
+```
 
-To learn more about Next.js, take a look at the following resources:
+启动开发服务器：
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+打开：
+
+```text
+http://localhost:3000
+```
+
+## 数据库说明
+
+应用依赖 `books` 和 `words` 两张词库表。当前迁移文件 [migrations/001_learning_progress.sql](migrations/001_learning_progress.sql) 会创建或补齐：
+
+- `User`：邮箱密码登录用户。
+- `user_book_progress`：用户单词书学习进度。
+- `user_word_study_records`：用户单词学习记录。
+- `words(book_id, word_rank)` 等查询索引。
+
+学习页读取进度后会按 `book_id` 和 `word_rank` 查询下一批 50 个词：
+
+```sql
+where book_id = ?
+and word_rank > current_word_rank
+order by word_rank asc
+limit 50
+```
+
+点击“下一个”时，客户端先立即切换 UI，并把已学词加入待同步队列。后台会批量写入 `user_word_study_records`，再更新 `user_book_progress`。
+
+## 常用命令
+
+```bash
+npm run dev        # 启动开发服务器
+npm run build      # 生产构建
+npm run start      # 启动生产服务
+npm run lint       # 运行 Next.js lint
+npm run db:migrate # 执行 SQL 迁移
+```
+
+## 主要目录
+
+```text
+app/
+  actions/         # 登录、学习进度同步 Server Actions
+  study/[bookId]/  # 学习页
+  word/[wordId]/   # 单词详情页
+  mine/            # 我的页
+components/        # H5 页面和 UI 组件
+lib/data/          # books、words、progress 数据访问
+lib/db/schema.ts   # Drizzle schema
+migrations/        # SQL 迁移
+docs/              # PRD 和技术文档
+```
+
+## 注意事项
+
+- `POSTGRES_URL` 是运行应用的必需环境变量。
+- `AUTH_SECRET` 是 NextAuth 的必需密钥，生产环境必须使用稳定的随机字符串。
+- 如果学习页没有单词，请确认 `words` 表存在对应的 `book_id` 数据。
+- 如果进度表不存在，请先运行 `npm run db:migrate`。
